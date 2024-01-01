@@ -1,5 +1,6 @@
-from autogen.oai.client import OpenAIWrapper
-from autogen.oai.completion import Completion, ChatCompletion
+# from autogen.oai.client import OpenAIWrapper
+from autogen.oai.custom_client import OpenAIWrapper
+# from autogen.oai.completion import Completion, ChatCompletion
 from autogen.oai.openai_utils import (
     get_config_list,
     config_list_gpt4_gpt35,
@@ -11,8 +12,8 @@ from autogen.oai.openai_utils import (
 
 __all__ = [
     "OpenAIWrapper",
-    "Completion",
-    "ChatCompletion",
+    # "Completion",
+    # "ChatCompletion",
     "get_config_list",
     "config_list_gpt4_gpt35",
     "config_list_openai_aoai",

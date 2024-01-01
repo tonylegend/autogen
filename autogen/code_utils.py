@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from hashlib import md5
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import black
+
 from autogen import oai
 
 try:
@@ -27,7 +29,8 @@ FAST_MODEL = "gpt-3.5-turbo"
 #   The (.*?) matches the code itself (non-greedy).
 #   The \r?\n makes sure there is a linebreak before ```.
 #   The [ \t]* matches the potential spaces before closing ``` (the spec allows indentation).
-CODE_BLOCK_PATTERN = r"```[ \t]*(\w+)?[ \t]*\r?\n(.*?)\r?\n[ \t]*```"
+# CODE_BLOCK_PATTERN = r"```[ \t]*(\w+)?[ \t]*\r?\n(.*?)\r?\n[ \t]*```"
+CODE_BLOCK_PATTERN = r"```[ \t]*(\w+)?`?[ \t]*\r?\n(.*?)\r?\n[ \t]*```"
 WORKING_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "extensions")
 UNKNOWN = "unknown"
 TIMEOUT_MSG = "Timeout"
@@ -115,10 +118,36 @@ def extract_code(
           If there is no code block in the input text, the language would be "unknown".
           If there is code block but the language is not specified, the language would be "".
     """
+
+    def format_code(language: str, code_string: str):
+        if language.lower() == "python":
+            try:
+                formatted_code = black.format_str(code_string, mode=black.FileMode())
+            except Exception as e:
+                logger.error(str(e))
+                raise
+            return formatted_code
+        return code_string
+
     text = content_str(text)
     if not detect_single_line_code:
-        match = re.findall(pattern, text, flags=re.DOTALL)
-        return match if match else [(UNKNOWN, text)]
+        matches = re.findall(pattern, text, flags=re.DOTALL)
+        if not matches:
+            return [(UNKNOWN, text)]
+        final_matches = []
+        # Secondary pattern to extract the language from within the code if necessary
+        secondary_pattern = r"(\w+)\`(.*)\`"
+        for match in matches:
+            language, code = match
+            if not language:
+                # Try to extract the language from the code
+                secondary_match = re.search(secondary_pattern, code, flags=re.DOTALL)
+                if secondary_match:
+                    language = secondary_match.group(1)
+                    code = secondary_match.group(2)
+            formatted_code = format_code(language, code)
+            final_matches.append((language, formatted_code))
+        return final_matches
 
     # Extract both multi-line and single-line code block, separated by the | operator
     # `([^`]+)`: Matches inline code.
@@ -129,11 +158,11 @@ def extract_code(
     extracted = []
     for lang, group1, group2 in code_blocks:
         if group1:
-            extracted.append((lang.strip(), group1.strip()))
+            extracted.append((lang.strip(), format_code(group1.strip())))
         elif group2:
-            extracted.append(("", group2.strip()))
+            extracted.append(("", format_code(group2.strip())))
 
-    return extracted
+    return extracted or [(UNKNOWN, text)]
 
 
 def generate_code(pattern: str = CODE_BLOCK_PATTERN, **config) -> Tuple[str, float]:

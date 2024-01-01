@@ -190,7 +190,10 @@ Then select the next role from {[agent.name for agent in agents]} to play. Only 
 
         if not final:
             # the LLM client is None, thus no reply is generated. Use round robin instead.
-            return self.next_agent(last_speaker, agents)
+            speaker = self.next_agent(last_speaker, agents)
+            if speaker is last_speaker:
+                return self.next_agent(last_speaker, agents)
+            return speaker
 
         # If exactly one agent is mentioned, use it. Otherwise, leave the OAI response unmodified
         mentions = self._mentioned_agents(name, agents)
@@ -203,7 +206,10 @@ Then select the next role from {[agent.name for agent in agents]} to play. Only 
 
         # Return the result
         try:
-            return self.agent_by_name(name)
+            speaker = self.agent_by_name(name)
+            if speaker is last_speaker:
+                return self.next_agent(last_speaker, agents)
+            return speaker
         except ValueError:
             return self.next_agent(last_speaker, agents)
 

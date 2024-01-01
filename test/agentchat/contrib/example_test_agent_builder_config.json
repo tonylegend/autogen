@@ -23,7 +23,7 @@
     },
     "code_execution_config": {
         "last_n_messages": 2,
-        "work_dir": "/home/elpis_ubuntu/autogen/test/agentchat/contrib/test_agent_scripts",
+        "work_dir": "/Users/taochen/Projects/aix/src/autogen/test/agentchat/contrib/test_agent_scripts",
         "timeout": 60,
         "use_docker": false
     }

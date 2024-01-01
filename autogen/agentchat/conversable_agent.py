@@ -10,6 +10,7 @@ from autogen import OpenAIWrapper
 from autogen.code_utils import DEFAULT_MODEL, UNKNOWN, content_str, execute_code, extract_code, infer_lang
 
 from .agent import Agent
+from autogen.oai.custom_client import OpenAIWrapperFactory
 
 try:
     from termcolor import colored
@@ -118,7 +119,7 @@ class ConversableAgent(Agent):
             self.llm_config = self.DEFAULT_CONFIG.copy()
             if isinstance(llm_config, dict):
                 self.llm_config.update(llm_config)
-            self.client = OpenAIWrapper(**self.llm_config)
+            self.client = OpenAIWrapperFactory.get_client(**self.llm_config)
 
         self._code_execution_config: Union[Dict, Literal[False]] = (
             {} if code_execution_config is None else code_execution_config
@@ -140,6 +141,9 @@ class ConversableAgent(Agent):
         self.register_reply([Agent, None], ConversableAgent.a_generate_function_call_reply)
         self.register_reply([Agent, None], ConversableAgent.check_termination_and_human_reply)
         self.register_reply([Agent, None], ConversableAgent.a_check_termination_and_human_reply)
+
+        self._last_replied_message_index: Dict[Agent, int] = {}
+        self._create_config = {}
 
     def register_reply(
         self,
@@ -349,6 +353,9 @@ class ConversableAgent(Agent):
         """
         # When the agent composes and sends the message, the role of the message is "assistant"
         # unless it's "function".
+        if recipient.chat_messages[self] and message == recipient.last_message(self)['content']:
+            logger.warning("The recipient may receive the same message as the previous one.")
+
         valid = self._append_oai_message(message, "assistant", recipient)
         if valid:
             recipient.receive(message, self, request_reply, silent)
@@ -485,7 +492,7 @@ class ConversableAgent(Agent):
         if request_reply is False or request_reply is None and self.reply_at_receive[sender] is False:
             return
         reply = self.generate_reply(messages=self.chat_messages[sender], sender=sender)
-        if reply is not None:
+        if reply:
             self.send(reply, sender, silent=silent)
 
     async def a_receive(
@@ -624,18 +631,31 @@ class ConversableAgent(Agent):
         client = self.client if config is None else config
         if client is None:
             return False, None
+        # Suppose messages are all the historical messages from the sender.
         if messages is None:
             messages = self._oai_messages[sender]
+        if sender not in self._last_replied_message_index:
+            self._last_replied_message_index[sender] = -1
+        messages = messages[self._last_replied_message_index[sender] + 1:]
+        system_message = self._oai_system_message if self._last_replied_message_index[sender] == 0 and self._oai_system_message[0]['content'] else []
 
         # TODO: #1143 handle token limit exceeded error
         response = client.create(
-            context=messages[-1].pop("context", None), messages=self._oai_system_message + messages
+            context=messages[-1].pop("context", None), messages=system_message + messages,
+            sender=sender, recipient=self, **self._create_config,
         )
 
         # TODO: line 301, line 271 is converting messages to dict. Can be removed after ChatCompletionMessage_to_dict is merged.
         extracted_response = client.extract_text_or_completion_object(response)[0]
         if not isinstance(extracted_response, str):
             extracted_response = extracted_response.model_dump(mode="dict")
+
+        # Record the last replied message index
+        if extracted_response:
+            # messages = self._oai_messages[sender][self._last_replied_message_index[sender]:]
+            if self._append_oai_message(extracted_response, "assistant", sender):
+                self._last_replied_message_index[sender] = len(self._oai_messages[sender])
+
         return True, extracted_response
 
     async def a_generate_oai_reply(
@@ -1320,7 +1340,7 @@ class ConversableAgent(Agent):
         if len(self.llm_config["functions"]) == 0:
             del self.llm_config["functions"]
 
-        self.client = OpenAIWrapper(**self.llm_config)
+        self.client = OpenAIWrapperFactory.get_client(**self.llm_config)
 
     def can_execute_function(self, name: str) -> bool:
         """Whether the agent can execute the function."""
