@@ -75,8 +75,8 @@ class AgentBuilder:
     def __init__(
         self,
         config_path: Optional[str] = get_config_file_path('config_list.json'),
-        builder_model: Optional[str] = "gpt-3.5-turbo",
-        agent_model: Optional[str] = "gpt-3.5-turbo",
+        builder_model: Optional[str] = "gpt-4",
+        agent_model: Optional[str] = "gpt-4",
         # host: Optional[str] = "localhost",
         # endpoint_building_timeout: Optional[int] = 600,
     ):

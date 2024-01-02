@@ -36,7 +36,7 @@ if not logger.handlers:
 
 
 class OpenAIWrapper:
-    """A wrapper class for LangChain LLM."""
+    """A wrapper class for openai client."""
 
     cache_path_root: str = ".cache"
     extra_kwargs = {"cache_seed", "filter_func", "allow_format_str_template", "context", "api_version"}
@@ -346,6 +346,7 @@ class OpenAIWrapper:
                             message=ChatCompletionMessage(
                                 role="assistant", content=response_contents[i], function_call=None
                             ),
+                            logprobs=None,
                         )
                     )
             response.usage = CompletionUsage(
