@@ -146,8 +146,9 @@ def extract_code(
                     language = secondary_match.group(1)
                     code = secondary_match.group(2)
             formatted_code = format_code(language, code)
-            final_matches.append((language, formatted_code))
-        return final_matches
+            if language not in ('mathematica',):
+                final_matches.append((language, formatted_code))
+        return final_matches or [(UNKNOWN, text)]
 
     # Extract both multi-line and single-line code block, separated by the | operator
     # `([^`]+)`: Matches inline code.

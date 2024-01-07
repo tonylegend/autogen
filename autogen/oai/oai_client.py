@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import inspect
 import os
-from typing import Any, Union, Mapping, Dict
+from typing import Any, Union, Mapping, Dict, TYPE_CHECKING
 
 import httpx
 from openai import APIStatusError, OpenAIError
 from typing_extensions import Self
 
 from aix.data.llm.unlimited_gpt.UnlimitedGPT import ChatGPT
-from aix.utils.pages import get_chatbot
 from autogen.oai.oai_completion import Completions, Chat
+
+if TYPE_CHECKING:
+    from aix.utils.pages import get_chatbot
 
 DEFAULT_MAX_RETRIES = 2
 __version__ = "1.5.0"
@@ -100,6 +102,7 @@ class OpenAI:
     def get_chatbot_1(self, id: str = None, **kwargs) -> ChatGPT:
         chatbot = self._chatbots.get(id, None)
         if chatbot is None:
+            from aix.utils.pages import get_chatbot
             chatbot = get_chatbot(**(self._chatbot_kwargs | kwargs))
             if chatbot:
                 self._chatbots[chatbot.id] = chatbot

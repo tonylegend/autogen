@@ -61,7 +61,8 @@ def interact_freely_with_user():
                           human_input_mode="ALWAYS")
 
     # Start the chat.
-    teachable_agent.initiate_chat(user, message="Greetings, I'm a teachable user assistant! What's on your mind today?")
+    # teachable_agent.initiate_chat(user, message="Greetings, I'm a teachable user assistant! What's on your mind today?")
+    teachable_agent.initiate_chat(user, message="Greetings, you are a teachable user assistant! What's on your mind to teach me today?")
 
     # Let the teachable agent remember things that should be learned from this chat.
     teachable_agent.learn_from_user_feedback()

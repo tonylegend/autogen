@@ -1,17 +1,19 @@
 import asyncio
 import copy
 import functools
+import inspect
 import json
 import logging
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type, TypeVar, Union
+from queue import Queue
 
 from autogen import OpenAIWrapper
 from autogen.code_utils import DEFAULT_MODEL, UNKNOWN, content_str, execute_code, extract_code, infer_lang
-
-from .agent import Agent
+from autogen.agentchat.agent import Agent
 from autogen.oai.custom_client import OpenAIWrapperFactory
-from .._pydantic import model_dump
+from autogen.function_utils import load_basemodels_if_needed, serialize_to_str, get_function_schema
+from autogen._pydantic import model_dump
 
 try:
     from termcolor import colored
@@ -62,6 +64,7 @@ class ConversableAgent(Agent):
         llm_config: Optional[Union[Dict, Literal[False]]] = None,
         default_auto_reply: Optional[Union[str, Dict, None]] = "",
         description: Optional[str] = None,
+        q: Queue | None = None,
     ):
         """
         Args:
@@ -149,6 +152,7 @@ class ConversableAgent(Agent):
 
         self._last_replied_message_index: Dict[Agent, int] = {}
         self._create_config = {}
+        self._q = q
 
     def register_reply(
         self,
@@ -361,7 +365,13 @@ class ConversableAgent(Agent):
         if recipient.chat_messages[self] and message == recipient.last_message(self)['content']:
             logger.warning("The recipient may receive the same message as the previous one.")
 
-        valid = self._append_oai_message(message, "assistant", recipient)
+        chat_messages = self.chat_messages[recipient]
+        if chat_messages and (
+                (isinstance(message, str) and chat_messages[self._last_replied_message_index[recipient]]['content'] == message) or
+                chat_messages[self._last_replied_message_index[recipient]] == message):
+            valid = True
+        else:
+            valid = self._append_oai_message(message, "assistant", recipient)
         if valid:
             recipient.receive(message, self, request_reply, silent)
         else:
@@ -428,6 +438,11 @@ class ConversableAgent(Agent):
             print(colored(func_print, "green"), flush=True)
             print(message["content"], flush=True)
             print(colored("*" * len(func_print), "green"), flush=True)
+
+            if self._q is not None:
+                _message = message.copy()
+                _message['content'] = func_print + '\n' + _message['content']
+                self._q.put(_message)
         else:
             content = message.get("content")
             if content is not None:
@@ -451,6 +466,9 @@ class ConversableAgent(Agent):
                     sep="",
                 )
                 print(colored("*" * len(func_print), "green"), flush=True)
+            if self._q is not None:
+                _message = message.copy()
+                self._q.put(_message)
         print("\n", "-" * 80, flush=True, sep="")
 
     def _process_received_message(self, message: Union[Dict, str], sender: Agent, silent: bool):
@@ -462,7 +480,8 @@ class ConversableAgent(Agent):
                 "Received message can't be converted into a valid ChatCompletion message. Either content or function_call must be provided."
             )
         if not silent:
-            self._print_received_message(message, sender)
+            # self._print_received_message(message, sender)
+            self._print_received_message(self._oai_messages[sender][-1], sender)
 
     def receive(
         self,
@@ -499,6 +518,9 @@ class ConversableAgent(Agent):
         reply = self.generate_reply(messages=self.chat_messages[sender], sender=sender)
         if reply:
             self.send(reply, sender, silent=silent)
+        # Notify the chat termination
+        if self._q is not None:
+            self._q.put(None)
 
     async def a_receive(
         self,
@@ -642,7 +664,7 @@ class ConversableAgent(Agent):
         if sender not in self._last_replied_message_index:
             self._last_replied_message_index[sender] = -1
         messages = messages[self._last_replied_message_index[sender] + 1:]
-        system_message = self._oai_system_message if self._last_replied_message_index[sender] == 0 and self._oai_system_message[0]['content'] else []
+        system_message = self._oai_system_message if self._last_replied_message_index[sender] <= 0 and self._oai_system_message[0]['content'] else []
 
         # TODO: #1143 handle token limit exceeded error
         response = client.create(
@@ -659,7 +681,7 @@ class ConversableAgent(Agent):
         if extracted_response:
             # messages = self._oai_messages[sender][self._last_replied_message_index[sender]:]
             if self._append_oai_message(extracted_response, "assistant", sender):
-                self._last_replied_message_index[sender] = len(self._oai_messages[sender])
+                self._last_replied_message_index[sender] = len(self._oai_messages[sender]) - 1
 
         return True, extracted_response
 
@@ -1086,7 +1108,11 @@ class ConversableAgent(Agent):
         Returns:
             str: human input.
         """
-        reply = input(prompt)
+        if self._q is not None:
+            self._q.put(prompt)
+            reply = self._q.get()
+        else:
+            reply = input(prompt)
         return reply
 
     async def a_get_human_input(self, prompt: str) -> str:
