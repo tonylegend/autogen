@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 import json
 import os
@@ -15,7 +17,7 @@ from openai.types.chat.chat_completion import Choice
 
 from aix.data.completion import Completion
 from autogen.oai.oai_client import OpenAI
-from autogen.oai.openai_utils import get_key
+from autogen.oai.openai_utils import get_key, OAI_PRICE1K
 from autogen.oai.utils.conversation import Conversation
 from autogen.token_count_utils import count_token
 
@@ -297,9 +299,9 @@ class OpenAIWrapper:
     @staticmethod
     def _completions_create(client, params):
         completions = client.chat.completions if "messages" in params else client.completions
-        # If streaming is enabled, has messages, and does not have functions, then
+        # If streaming is enabled, has messages, and does not have functions or tools, then
         # iterate over the chunks of the response
-        if params.get("stream", False) and "messages" in params and "functions" not in params:
+        if params.get("stream", False) and "messages" in params and "functions" not in params and "tools" not in params:
             response_contents = [""] * params.get("n", 1)
             finish_reasons = [""] * params.get("n", 1)
             completion_tokens = 0
@@ -362,50 +364,39 @@ class OpenAIWrapper:
             response = completions.create(**params)
         return response
 
-    @staticmethod
-    def cost(response) -> float:
-        """Calculate the cost of the response."""
-        # model = response.model
-        # if model not in oai_price1k:
-        #     # TODO: add logging to warn that the model is not found
-        #     return 0
-        #
-        # n_input_tokens = response.usage.prompt_tokens
-        # n_output_tokens = response.usage.completion_tokens
-        # tmp_price1K = oai_price1k[model]
-        # # First value is input token rate, second value is output token rate
-        # if isinstance(tmp_price1K, tuple):
-        #     return (tmp_price1K[0] * n_input_tokens + tmp_price1K[1] * n_output_tokens) / 1000
-        # return tmp_price1K * (n_input_tokens + n_output_tokens) / 1000
-        return 0
-
-    def _update_usage_summary(self, response, use_cache: bool) -> None:
+    def _update_usage_summary(self, response: ChatCompletion | Completion, use_cache: bool) -> None:
         """Update the usage summary.
 
         Usage is calculated no matter filter is passed or not.
         """
-        pass
+        try:
+            usage = response.usage
+            assert usage is not None
+            usage.prompt_tokens = 0 if usage.prompt_tokens is None else usage.prompt_tokens
+            usage.completion_tokens = 0 if usage.completion_tokens is None else usage.completion_tokens
+            usage.total_tokens = 0 if usage.total_tokens is None else usage.total_tokens
+        except (AttributeError, AssertionError):
+            logger.debug("Usage attribute is not found in the response.", exc_info=1)
+            return
 
-        # def update_usage(usage_summary):
-        #     if usage_summary is None:
-        #         usage_summary = {"total_cost": response.cost}
-        #     else:
-        #         usage_summary["total_cost"] += response.cost
-        #
-        #     usage_summary[response.model] = {
-        #         "cost": usage_summary.get(response.model, {}).get("cost", 0) + response.cost,
-        #         "prompt_tokens": usage_summary.get(response.model, {}).get("prompt_tokens", 0)
-        #         + response.usage.prompt_tokens,
-        #         "completion_tokens": usage_summary.get(response.model, {}).get("completion_tokens", 0)
-        #         + response.usage.completion_tokens,
-        #         "total_tokens": usage_summary.get(response.model, {}).get("total_tokens", 0)
-        #         + response.usage.total_tokens,
-        #     }
-        #     return usage_summary
-        #
-        # self.total_usage_summary = update_usage(self.total_usage_summary)
-        # if not use_cache:
-        #     self.actual_usage_summary = update_usage(self.actual_usage_summary)
+        def update_usage(usage_summary):
+            if usage_summary is None:
+                usage_summary = {"total_cost": response.cost}
+            else:
+                usage_summary["total_cost"] += response.cost
+
+            usage_summary[response.model] = {
+                "cost": usage_summary.get(response.model, {}).get("cost", 0) + response.cost,
+                "prompt_tokens": usage_summary.get(response.model, {}).get("prompt_tokens", 0) + usage.prompt_tokens,
+                "completion_tokens": usage_summary.get(response.model, {}).get("completion_tokens", 0)
+                + usage.completion_tokens,
+                "total_tokens": usage_summary.get(response.model, {}).get("total_tokens", 0) + usage.total_tokens,
+            }
+            return usage_summary
+
+        self.total_usage_summary = update_usage(self.total_usage_summary)
+        if not use_cache:
+            self.actual_usage_summary = update_usage(self.actual_usage_summary)
 
     def print_usage_summary(self, mode: Union[str, List[str]] = ["actual", "total"]) -> None:
         """Print the usage summary."""
@@ -462,6 +453,24 @@ class OpenAIWrapper:
     def clear_usage_summary(self) -> None:
         """Clear the usage summary."""
         self.total_usage_summary = None
+        self.actual_usage_summary = None
+
+    @staticmethod
+    def cost(self, response: Union[ChatCompletion, Completion]) -> float:
+        """Calculate the cost of the response."""
+        model = response.model
+        if True or model not in OAI_PRICE1K:
+            # TODO: add logging to warn that the model is not found
+            logger.debug(f"Model {model} is not found. The cost will be 0.", exc_info=1)
+            return 0
+
+        n_input_tokens = response.usage.prompt_tokens
+        n_output_tokens = response.usage.completion_tokens
+        tmp_price1K = OAI_PRICE1K[model]
+        # First value is input token rate, second value is output token rate
+        if isinstance(tmp_price1K, tuple):
+            return (tmp_price1K[0] * n_input_tokens + tmp_price1K[1] * n_output_tokens) / 1000
+        return tmp_price1K * (n_input_tokens + n_output_tokens) / 1000
 
     @classmethod
     def extract_text_or_completion_object(
