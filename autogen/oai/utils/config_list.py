@@ -29,7 +29,7 @@ config_conversation_map = {
 
 
 def get_config_list(config_path: str = None, filter_dict: dict = None) -> List[dict]:
-    config_path = config_path or get_config_file_path("config_list.py")
+    config_path = config_path or get_config_file_path("config_list.json")
     return config_list_from_json(config_path, filter_dict=filter_dict)
 
 

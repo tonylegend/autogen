@@ -456,7 +456,7 @@ class OpenAIWrapper:
         self.actual_usage_summary = None
 
     @staticmethod
-    def cost(self, response: Union[ChatCompletion, Completion]) -> float:
+    def cost(response: Union[ChatCompletion, Completion]) -> float:
         """Calculate the cost of the response."""
         model = response.model
         if True or model not in OAI_PRICE1K:

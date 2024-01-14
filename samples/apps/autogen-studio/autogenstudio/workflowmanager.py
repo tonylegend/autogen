@@ -2,6 +2,7 @@ from queue import Queue
 from typing import List, Optional
 from dataclasses import asdict
 import autogen
+from autogen.agentchat.contrib.gpt_store_agent import GptStoreAgent
 from .datamodel import AgentFlowSpec, AgentWorkFlowConfig, Message
 from .utils import get_skills_from_prompt, clear_folder
 from datetime import datetime
@@ -18,7 +19,8 @@ class AutoGenWorkFlowManager:
         history: Optional[List[Message]] = None,
         work_dir: str = None,
         clear_work_dir: bool = True,
-        q: Queue | None = None,
+        q1: Queue | None = None,
+        q2: Queue | None = None,
     ) -> None:
         """
         Initializes the AutoGenFlow with agents specified in the config and optional
@@ -29,7 +31,8 @@ class AutoGenWorkFlowManager:
             history: An optional list of previous messages to populate the agents' history.
 
         """
-        self._q = q
+        self._q1 = q1
+        self._q2 = q2
         self.work_dir = work_dir or "work_dir"
         if clear_work_dir:
             clear_folder(self.work_dir)
@@ -84,12 +87,14 @@ class AutoGenWorkFlowManager:
                     msg.content,
                     self.receiver,
                     request_reply=False,
+                    silent=True,
                 )
             elif msg.role == "assistant":
                 self.receiver.send(
                     msg.content,
                     self.sender,
                     request_reply=False,
+                    silent=True,
                 )
 
     def sanitize_agent_spec(self, agent_spec: AgentFlowSpec) -> AgentFlowSpec:
@@ -118,13 +123,14 @@ class AutoGenWorkFlowManager:
             agent_spec.config.code_execution_config = code_execution_config
 
         if agent_spec.type == "assistant":
-            agent_spec.config.system_message = (
-                autogen.AssistantAgent.DEFAULT_SYSTEM_MESSAGE
-                + "\n\n"
-                + agent_spec.config.system_message
-                + "\n\n"
-                + skills_prompt
-            )
+            if not agent_spec.config.assistant_id:
+                agent_spec.config.system_message = (
+                    autogen.AssistantAgent.DEFAULT_SYSTEM_MESSAGE
+                    + "\n\n"
+                    + agent_spec.config.system_message
+                    + "\n\n"
+                    + skills_prompt
+                )
 
         return agent_spec
 
@@ -141,10 +147,16 @@ class AutoGenWorkFlowManager:
         agent: autogen.Agent
         agent_spec = self.sanitize_agent_spec(agent_spec)
         if agent_spec.type == "assistant":
-            agent = autogen.AssistantAgent(q=self._q, **asdict(agent_spec.config),)
+            if agent_spec.config.assistant_id:
+                agent = GptStoreAgent(q1=self._q1, q2=self._q2, name=agent_spec.config.name,
+                                      instructions=agent_spec.config.system_message,
+                                      llm_config=asdict(agent_spec.config.llm_config),
+                                      assistant_id=agent_spec.config.assistant_id)
+            else:
+                agent = autogen.AssistantAgent(q1=self._q1, q2=self._q2, **asdict(agent_spec.config), )
             agent.register_reply([autogen.Agent, None], reply_func=self.process_reply, config={"callback": None})
         elif agent_spec.type == "userproxy":
-            agent = autogen.UserProxyAgent(q=self._q, **asdict(agent_spec.config))
+            agent = autogen.UserProxyAgent(q1=self._q1, q2=self._q2, **asdict(agent_spec.config))
             agent.register_reply([autogen.Agent, None], reply_func=self.process_reply, config={"callback": None})
         else:
             raise ValueError(f"Unknown agent type: {agent_spec.type}")

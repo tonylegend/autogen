@@ -96,3 +96,7 @@ class UserProxyAgent(ConversableAgent):
             else self.DEFAULT_USER_PROXY_AGENT_DESCRIPTIONS[human_input_mode],
             **kwargs,
         )
+        assistant_id = kwargs.get('assistant_id', None)
+        if assistant_id:
+            self._create_config['gizmo_id'] = assistant_id
+

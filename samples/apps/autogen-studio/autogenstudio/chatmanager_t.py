@@ -19,13 +19,14 @@ class ChatManager:
         self.executor = StatusAwareThreadPoolExecutor(max_workers=max_flows)
 
     def start_chat(self, message: Message, history: list = None, flow_config: AgentWorkFlowConfig = None,
-                   q: Queue = None, **kwargs):
+                   q1: Queue = None, q2: Queue = None, **kwargs):
         task_id = self.executor.submit(self.chat, message=message, history=history, flow_config=flow_config,
-                                       q=q, **kwargs)
+                                       q1=q1, q2=q2, **kwargs)
         return task_id
 
     @staticmethod
-    def chat(message: Message, history: list = None, flow_config: AgentWorkFlowConfig = None, q: Queue = None, **kwargs):
+    def chat(message: Message, history: list = None, flow_config: AgentWorkFlowConfig = None, q1: Queue = None,
+             q2: Queue = None, **kwargs):
         work_dir = kwargs.get("work_dir", '')
         scratch_dir = os.path.join(get_project_root(), work_dir, "scratch")
         os.makedirs(scratch_dir, exist_ok=True)
@@ -35,7 +36,7 @@ class ChatManager:
             flow_config = get_default_agent_config(scratch_dir)
 
         # print("Flow config: ", flow_config)
-        flow = AutoGenWorkFlowManager(config=flow_config, history=history or [], work_dir=scratch_dir, q=q)
+        flow = AutoGenWorkFlowManager(config=flow_config, history=history or [], work_dir=scratch_dir, q1=q1, q2=q2)
         message_text = message.content.strip()
 
         start_time = time.time()

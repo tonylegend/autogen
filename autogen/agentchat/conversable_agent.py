@@ -63,7 +63,9 @@ class ConversableAgent(Agent):
         llm_config: Optional[Union[Dict, Literal[False]]] = None,
         default_auto_reply: Optional[Union[str, Dict, None]] = "",
         description: Optional[str] = None,
-        q: Queue | None = None,
+        q1: Queue | None = None,
+        q2: Queue | None = None,
+        **kwargs,
     ):
         """
         Args:
@@ -161,7 +163,8 @@ class ConversableAgent(Agent):
 
         self._last_replied_message_index: Dict[Agent, int] = {}
         self._create_config = {}
-        self._q = q
+        self._q1 = q1
+        self._q2 = q2
 
     def register_reply(
         self,
@@ -404,12 +407,13 @@ class ConversableAgent(Agent):
             logger.warning("The recipient may receive the same message as the previous one.")
 
         chat_messages = self.chat_messages[recipient]
-        if chat_messages and (
-                (isinstance(message, str) and chat_messages[self._last_replied_message_index[recipient]]['content'] == message) or
-                chat_messages[self._last_replied_message_index[recipient]] == message):
+        if chat_messages and not self._last_replied_message_index.get(recipient):
+            self._last_replied_message_index[recipient] = len(chat_messages) - 1
+        if chat_messages and ((isinstance(message, str) and chat_messages[self._last_replied_message_index[recipient]]['content'] == message) or chat_messages[self._last_replied_message_index[recipient]] == message):
             valid = True
         else:
-            valid = self._append_oai_message(message, "assistant", recipient)
+            role = "user" if type(self).__name__ == "UserProxyAgent" else "assistant"
+            valid = self._append_oai_message(message, role, recipient)
         if valid:
             recipient.receive(message, self, request_reply, silent)
         else:
@@ -483,10 +487,10 @@ class ConversableAgent(Agent):
             print(message["content"], flush=True)
             print(colored("*" * len(func_print), "green"), flush=True)
 
-            if self._q is not None:
+            if self._q1 is not None:
                 _message = message.copy()
                 _message['content'] = func_print + '\n' + _message['content']
-                self._q.put(_message)
+                self._q1.put(_message)
         else:
             content = message.get("content")
             if content is not None:
@@ -524,16 +528,17 @@ class ConversableAgent(Agent):
                     )
                     print(colored("*" * len(func_print), "green"), flush=True)
 
-            if self._q is not None:
+            if self._q1 is not None:
                 _message = message.copy()
-                self._q.put(_message)
+                self._q1.put(_message)
 
         print("\n", "-" * 80, flush=True, sep="")
 
     def _process_received_message(self, message: Union[Dict, str], sender: Agent, silent: bool):
         message = self._message_to_dict(message)
         # When the agent receives a message, the role of the message is "user". (If 'role' exists and is 'function', it will remain unchanged.)
-        valid = self._append_oai_message(message, "user", sender)
+        role = "user" if type(sender).__name__ == 'UserProxyAgent' else 'assistant'
+        valid = self._append_oai_message(message, role, sender)
         if not valid:
             raise ValueError(
                 "Received message can't be converted into a valid ChatCompletion message. Either content or function_call must be provided."
@@ -573,15 +578,16 @@ class ConversableAgent(Agent):
         Raises:
             ValueError: if the message can't be converted into a valid ChatCompletion message.
         """
-        self._process_received_message(message, sender, silent)
+        if not (self.chat_messages[sender] and message == self.last_message(sender)['content']):
+            self._process_received_message(message, sender, silent)
         if request_reply is False or request_reply is None and self.reply_at_receive[sender] is False:
             return
         reply = self.generate_reply(messages=self.chat_messages[sender], sender=sender)
         if reply:
             self.send(reply, sender, silent=silent)
         # Notify the chat termination
-        if self._q is not None:
-            self._q.put(None)
+        if self._q1 is not None:
+            self._q1.put(None)
 
     async def a_receive(
         self,
@@ -813,7 +819,7 @@ class ConversableAgent(Agent):
             if not message["content"]:
                 continue
             code_blocks = extract_code(message["content"])
-            if len(code_blocks) == 1 and code_blocks[0][0] == UNKNOWN:
+            if len(code_blocks) == 1 and code_blocks[0][0] in (UNKNOWN, 'markdown'):
                 continue
 
             # found code blocks, execute code and push "last_n_messages" back
@@ -1339,9 +1345,10 @@ class ConversableAgent(Agent):
         Returns:
             str: human input.
         """
-        if self._q is not None:
-            self._q.put(prompt)
-            reply = self._q.get()
+        if self._q1 is not None:
+            self._q1.put(prompt)
+            if self._q2 is not None:
+                reply = self._q2.get()
         else:
             reply = input(prompt)
         return reply

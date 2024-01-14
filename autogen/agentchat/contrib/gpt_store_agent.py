@@ -60,32 +60,36 @@ class GptStoreAgent(ConversableAgent):
         # self._openai_client = oai_wrapper._clients[0]
         openai_assistant_id = llm_config.get("assistant_id", None)
         if openai_assistant_id is None:
-            # try to find assistant by name first
-            candidate_assistants = retrieve_gpt_assistants_by_name(name)
+            openai_assistant_id = kwargs.get("assistant_id", None)
+            if openai_assistant_id:
+                self._openai_assistant_id = openai_assistant_id
+            else:
+                # try to find assistant by name first
+                candidate_assistants = retrieve_gpt_assistants_by_name(name)
 
-            if len(candidate_assistants) == 0:
-                raise RuntimeError(f"assistant {name} does not exist. Create a new assistant first.")
-                # # create a new assistant
-                # if instructions is None:
-                #     logger.warning(
-                #         "No instructions were provided for new assistant. Using default instructions from AssistantAgent.DEFAULT_SYSTEM_MESSAGE."
-                #     )
-                #     instructions = AssistantAgent.DEFAULT_SYSTEM_MESSAGE
-                # self._openai_assistant = self._openai_client.beta.assistants.create(
-                #     name=name,
-                #     instructions=instructions,
-                #     tools=llm_config.get("tools", []),
-                #     model=llm_config.get("model", "gpt-4-1106-preview"),
-                #     file_ids=llm_config.get("file_ids", []),
-                # )
-            # else:
-            #     if len(candidate_assistants) > 1:
-            #         logger.warning(
-            #             f"Multiple assistants with name {name} found. Using the first assistant in the list. "
-            #             f"Please specify the assistant ID in llm_config to use a specific assistant."
-            #         )
-                # self._openai_assistant = candidate_assistants[0]
-            self._openai_assistant_id = candidate_assistants[0]
+                if len(candidate_assistants) == 0:
+                    raise RuntimeError(f"assistant {name} does not exist. Create a new assistant first.")
+                    # # create a new assistant
+                    # if instructions is None:
+                    #     logger.warning(
+                    #         "No instructions were provided for new assistant. Using default instructions from AssistantAgent.DEFAULT_SYSTEM_MESSAGE."
+                    #     )
+                    #     instructions = AssistantAgent.DEFAULT_SYSTEM_MESSAGE
+                    # self._openai_assistant = self._openai_client.beta.assistants.create(
+                    #     name=name,
+                    #     instructions=instructions,
+                    #     tools=llm_config.get("tools", []),
+                    #     model=llm_config.get("model", "gpt-4-1106-preview"),
+                    #     file_ids=llm_config.get("file_ids", []),
+                    # )
+                # else:
+                #     if len(candidate_assistants) > 1:
+                #         logger.warning(
+                #             f"Multiple assistants with name {name} found. Using the first assistant in the list. "
+                #             f"Please specify the assistant ID in llm_config to use a specific assistant."
+                #         )
+                    # self._openai_assistant = candidate_assistants[0]
+                self._openai_assistant_id = candidate_assistants[0]
         else:
             self._openai_assistant_id = openai_assistant_id
             # # retrieve an existing assistant

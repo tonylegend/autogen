@@ -89,6 +89,7 @@ class AgentConfig:
     system_message: Optional[str] = None
     is_termination_msg: Optional[Union[bool, str, Callable]] = None
     code_execution_config: Optional[Union[bool, str, Dict[str, Any]]] = None
+    assistant_id: str | None = None
 
     def dict(self):
         result = asdict(self)
