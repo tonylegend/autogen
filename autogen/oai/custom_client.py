@@ -245,7 +245,7 @@ class OpenAIWrapper:
             filter_func = extra_kwargs.get("filter_func")
             context = extra_kwargs.get("context")
             sender = params.pop('sender', None)
-            recipent = params.pop('recipient', None)
+            recipient = params.pop('recipient', None)
 
             # Try to load the response from cache
             if cache_seed is not None:
@@ -271,8 +271,8 @@ class OpenAIWrapper:
                             return response
                         continue  # filter is not passed; try the next config
             try:
-                conversation = next((c for c in self.conversations if c.sender == sender and c.recipient == recipent),
-                                    Conversation(sender=sender, recipient=recipent))
+                conversation = next((c for c in self.conversations if c.sender == sender and c.recipient == recipient),
+                                    Conversation(sender=sender, recipient=recipient))
                 self.conversations.add(conversation)
                 params['bot_id'] = conversation.bot_id
                 response = self._completions_create(client, params)

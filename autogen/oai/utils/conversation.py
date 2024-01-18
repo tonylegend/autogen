@@ -13,7 +13,7 @@ class Conversation(BaseModel):
     @classmethod
     def validate_agent(cls, v):
         from autogen import Agent
-        if v is not None and not isinstance(v, Agent):
+        if v is not None and not isinstance(v, (Agent, str)):
             raise TypeError("sender or recipient must be of type Agent or None.")
         return v
 
