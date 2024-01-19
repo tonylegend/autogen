@@ -104,8 +104,9 @@ class Completions(SyncAPIResource):
         assert (prompt and not messages) or (not prompt and messages)
         prompt_or_messages = prompt or messages
         # chatbot = self._client.get_chatbot(conversation_id=conversation_id)
-        chatbot = self._client.get_chatbot_1(id=bot_id, **kwargs)
-        return chatbot.send_message(prompt_or_messages=prompt_or_messages, model=ChatGPTModel(model) if model else None,
+        _model = ChatGPTModel(model) if model else None
+        chatbot = self._client.get_chatbot_1(id=bot_id, model=_model, **kwargs)
+        return chatbot.send_message(prompt_or_messages=prompt_or_messages, model=_model,
                                     stream=stream, timeout=timeout)
 
 
