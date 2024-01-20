@@ -11,6 +11,7 @@ from typing import Dict, List, Callable, Optional, Union, Any, Tuple
 from flaml.automl.logger import logger_formatter
 import openai
 from openai import APIError
+from openai.lib.azure import AzureOpenAI
 from openai.resources import Completions
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion, ChatCompletionMessage, ChatCompletionChunk
@@ -45,8 +46,18 @@ class OpenAIWrapper:
     """A wrapper class for openai client."""
 
     cache_path_root: str = ".cache"
-    extra_kwargs = {"cache_seed", "filter_func", "allow_format_str_template", "context", "api_version"}
+    extra_kwargs = {
+        "cache_seed",
+        "filter_func",
+        "allow_format_str_template",
+        "context",
+        "api_version",
+        "api_type",
+        "tags",
+    }
     openai_kwargs = set(inspect.getfullargspec(OpenAI.__init__).kwonlyargs) | OpenAI.chatgpt_kwargs
+    aopenai_kwargs = set(inspect.getfullargspec(AzureOpenAI.__init__).kwonlyargs)
+    openai_kwargs = openai_kwargs | aopenai_kwargs
     total_usage_summary: Optional[Dict[str, Any]] = None
     actual_usage_summary: Optional[Dict[str, Any]] = None
 
@@ -99,46 +110,10 @@ class OpenAIWrapper:
             self._clients = [self._client(extra_kwargs, openai_config)]
             self._config_list = [extra_kwargs]
 
-    def _process_for_azure(
-        self, config: Dict[str, Any], extra_kwargs: Dict[str, Any], segment: str = "default"
-    ) -> None:
-        # deal with api_version
-        query_segment = f"{segment}_query"
-        headers_segment = f"{segment}_headers"
-        api_version = extra_kwargs.get("api_version")
-        if api_version is not None and query_segment not in config:
-            config[query_segment] = {"api-version": api_version}
-            if segment == "default":
-                # remove the api_version from extra_kwargs
-                extra_kwargs.pop("api_version")
-        if segment == "extra":
-            return
-        # deal with api_type
-        api_type = extra_kwargs.get("api_type")
-        if api_type is not None and api_type.startswith("azure") and headers_segment not in config:
-            api_key = config.get("api_key", os.environ.get("AZURE_OPENAI_API_KEY"))
-            config[headers_segment] = {"api-key": api_key}
-            # remove the api_type from extra_kwargs
-            extra_kwargs.pop("api_type")
-            # deal with model
-            model = extra_kwargs.get("model")
-            if model is None:
-                return
-            if "gpt-3.5" in model:
-                # hack for azure gpt-3.5
-                extra_kwargs["model"] = model = model.replace("gpt-3.5", "gpt-35")
-            base_url = config.get("base_url")
-            if base_url is None:
-                raise ValueError("to use azure openai api, base_url must be specified.")
-            suffix = f"/openai/deployments/{model}"
-            if not base_url.endswith(suffix):
-                config["base_url"] += suffix[1:] if base_url.endswith("/") else suffix
-
     def _separate_openai_config(self, config: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Separate the config into openai_config and extra_kwargs."""
         openai_config = {k: v for k, v in config.items() if k in self.openai_kwargs}
         extra_kwargs = {k: v for k, v in config.items() if k not in self.openai_kwargs}
-        self._process_for_azure(openai_config, extra_kwargs)
         return openai_config, extra_kwargs
 
     def _separate_create_config(self, config: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -150,10 +125,22 @@ class OpenAIWrapper:
     def _client(self, config: Dict[str, Any], openai_config: Dict[str, Any]) -> OpenAI:
         """Create a client with the given config to override openai_config,
         after removing extra kwargs.
+
+        For Azure models/deployment names there's a convenience modification of model removing dots in
+        the it's value (Azure deploment names can't have dots). I.e. if you have Azure deployment name
+        "gpt-35-turbo" and define model "gpt-3.5-turbo" in the config the function will remove the dot
+        from the name and create a client that connects to "gpt-35-turbo" Azure deployment.
         """
         openai_config = {**openai_config, **{k: v for k, v in config.items() if k in self.openai_kwargs}}
-        self._process_for_azure(openai_config, config)
-        client = OpenAI(**openai_config)
+        api_type = config.get("api_type")
+        if api_type is not None and api_type.startswith("azure"):
+            openai_config["azure_deployment"] = openai_config.get("azure_deployment", config.get("model"))
+            if openai_config["azure_deployment"] is not None:
+                openai_config["azure_deployment"] = openai_config["azure_deployment"].replace(".", "")
+            openai_config["azure_endpoint"] = openai_config.get("azure_endpoint", openai_config.pop("base_url", None))
+            client = AzureOpenAI(**openai_config)
+        else:
+            client = OpenAI(**openai_config)
         return client
 
     @classmethod
@@ -236,8 +223,9 @@ class OpenAIWrapper:
             full_config = {**config, **self._config_list[i]}
             # separate the config into create_config and extra_kwargs
             create_config, extra_kwargs = self._separate_create_config(full_config)
-            # process for azure
-            self._process_for_azure(create_config, extra_kwargs, "extra")
+            api_type = extra_kwargs.get("api_type")
+            if api_type and api_type.startswith("azure") and "model" in create_config:
+                create_config["model"] = create_config["model"].replace(".", "")
             # construct the create params
             params = self._construct_create_params(create_config, extra_kwargs)
             # get the cache_seed, filter_func and context
@@ -508,11 +496,11 @@ class OpenAIWrapper:
                 total_tokens=prompt_tokens + completion_tokens,
             )
         else:
-            # If streaming is not enabled or using functions, send a regular chat completion request
-            # Functions are not supported, so ensure streaming is disabled
+            # If streaming is not enabled, send a regular chat completion request
             params = params.copy()
             params["stream"] = False
             response = completions.create(**params)
+
         return response
 
     def _update_usage_summary(self, response: Union[ChatCompletion, Completion], use_cache: bool) -> None:
@@ -612,7 +600,7 @@ class OpenAIWrapper:
         model = response.model
         if True or model not in OAI_PRICE1K:
             # TODO: add logging to warn that the model is not found
-            logger.debug(f"Model {model} is not found. The cost will be 0.", exc_info=1)
+            logger.debug(f"Model {model} is not found. The cost will be 0.", exc_info=True)
             return 0
 
         n_input_tokens = response.usage.prompt_tokens  # type: ignore [union-attr]
@@ -679,3 +667,6 @@ class OpenAIWrapperFactory:
         if config_key not in cls._clients:
             cls._clients[config_key] = OpenAIWrapper(**config)
         return cls._clients[config_key]
+
+
+# TODO: logging
