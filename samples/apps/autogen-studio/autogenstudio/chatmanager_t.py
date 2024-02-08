@@ -14,7 +14,6 @@ _logger = logging.getLogger(__name__)
 
 class ChatManager:
     def __init__(self, max_flows: int = 5) -> None:
-        super().__init__()
         from aix.utils.misc import StatusAwareThreadPoolExecutor
         self.executor = StatusAwareThreadPoolExecutor(max_workers=max_flows)
 

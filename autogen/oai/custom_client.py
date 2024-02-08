@@ -469,7 +469,8 @@ class OpenAIWrapper:
             print("\033[0m\n")
 
             # Prepare the final ChatCompletion object based on the accumulated data
-            model = chunk.model.replace("gpt-35", "gpt-3.5")  # hack for Azure API
+            # model = chunk.model.replace("gpt-35", "gpt-3.5")  # hack for Azure API
+            model = chunk.model.replace("text-davinci-002-render-sha", "gpt-3.5-turbo")  # hack for custom API
             prompt_tokens = count_token(params["messages"], model)
             if response is None:
                 response = ChatCompletion(
