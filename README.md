@@ -13,6 +13,8 @@
     <br>
 </p> -->
 
+:warning: Jan 23: **Breaking Change in Latest Release v0.2.8** `use_docker` defaults to `True` for code-execution. See [blog post](https://microsoft.github.io/autogen/blog/2024/01/23/Code-execution-in-docker) for details and [FAQ](https://microsoft.github.io/autogen/docs/FAQ#agents-are-throwing-due-to-docker-not-running-how-can-i-resolve-this) for troubleshooting any issues.
+
 :fire: Dec 31: [AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation Framework](https://arxiv.org/abs/2308.08155) is selected by [TheSequence: My Five Favorite AI Papers of 2023](https://thesequence.substack.com/p/my-five-favorite-ai-papers-of-2023).
 
 <!-- :fire: Nov 24: pyautogen [v0.2](https://github.com/microsoft/autogen/releases/tag/v0.2.0) is released with many updates and new features compared to v0.1.1. It switches to using openai-python v1. Please read the [migration guide](https://microsoft.github.io/autogen/docs/Installation#python). -->
@@ -25,7 +27,7 @@
 
 :fire: Nov 1: AutoGen is the top trending repo on GitHub in October 2023.
 
-:tada: Oct 03: AutoGen spins off from FLAML on Github and has a major paper update (first version on Aug 16).
+:tada: Oct 03: AutoGen spins off from FLAML on GitHub and has a major paper update (first version on Aug 16).
 
 <!-- :tada: Aug 16: Paper about AutoGen on [arxiv](https://arxiv.org/abs/2308.08155). -->
 
@@ -209,7 +211,7 @@ This project welcomes contributions and suggestions. Most contributions require 
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
 the rights to use your contribution. For details, visit <https://cla.opensource.microsoft.com>.
 
-If you are new to GitHub [here](https://help.github.com/categories/collaborating-with-issues-and-pull-requests/) is a detailed help source on getting involved with development on GitHub.
+If you are new to GitHub, [here](https://opensource.guide/how-to-contribute/#how-to-submit-a-contribution) is a detailed help source on getting involved with development on GitHub.
 
 When you submit a pull request, a CLA bot will automatically determine whether you need to provide
 a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
